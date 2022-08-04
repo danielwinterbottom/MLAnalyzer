@@ -64,6 +64,7 @@
 #include "TCanvas.h"
 #include "TStyle.h"
 #include "TMath.h"
+#include "TVector2.h"
 
 #include "DataFormats/ParticleFlowCandidate/interface/PFCandidate.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
@@ -81,6 +82,8 @@
 
 #include "MagneticField/Engine/interface/MagneticField.h"
 #include "MagneticField/Records/interface/IdealMagneticFieldRecord.h"
+#include "DataFormats/ParticleFlowReco/interface/PFRecHit.h"
+
 
 
 
@@ -106,7 +109,7 @@ class RecHitAnalyzer : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
     static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
   private:
-    virtual void beginJob() override;
+    virtual void beginJob(const edm::EventSetup&);
     virtual void analyze(const edm::Event&, const edm::EventSetup&) override;
     virtual void endJob() override;
 
@@ -115,6 +118,7 @@ class RecHitAnalyzer : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
     edm::EDGetTokenT<EcalRecHitCollection> EBRecHitCollectionT_;
     edm::EDGetTokenT<EBDigiCollection>     EBDigiCollectionT_;
     edm::EDGetTokenT<EcalRecHitCollection> EERecHitCollectionT_;
+    edm::EDGetTokenT<EcalRecHitCollection> ESRecHitCollectionT_;
     edm::EDGetTokenT<HBHERecHitCollection> HBHERecHitCollectionT_;
     edm::EDGetTokenT<TrackingRecHitCollection> TRKRecHitCollectionT_;
     edm::EDGetTokenT<reco::GenParticleCollection> genParticleCollectionT_;
@@ -126,6 +130,8 @@ class RecHitAnalyzer : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
     edm::EDGetTokenT<edm::View<reco::Jet> > recoJetsT_;
     edm::EDGetTokenT<reco::JetTagCollection> jetTagCollectionT_;
     edm::EDGetTokenT<std::vector<reco::CandIPTagInfo> >    ipTagInfoCollectionT_;
+    edm::EDGetTokenT<std::vector<reco::PFRecHit>> PFEBRecHitCollectionT_;
+    edm::EDGetTokenT<std::vector<reco::PFRecHit>> PFHBHERecHitCollectionT_;
     
     typedef std::vector<reco::PFCandidate>  PFCollection;
     edm::EDGetTokenT<PFCollection> pfCollectionT_;
@@ -149,6 +155,8 @@ class RecHitAnalyzer : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
     void branchesEvtSel_jet     ( TTree*, edm::Service<TFileService>& );
     void branchesEB             ( TTree*, edm::Service<TFileService>& );
     void branchesEE             ( TTree*, edm::Service<TFileService>& );
+    void branchesES             ( TTree*, edm::Service<TFileService>& );
+    //void branchesESatEE         ( TTree*, edm::Service<TFileService>& );
     void branchesHBHE           ( TTree*, edm::Service<TFileService>& );
     void branchesECALatHCAL     ( TTree*, edm::Service<TFileService>& );
     void branchesECALstitched   ( TTree*, edm::Service<TFileService>& );
@@ -162,11 +170,15 @@ class RecHitAnalyzer : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
     void branchesTRKvolumeAtEBEE( TTree*, edm::Service<TFileService>& );
     //void branchesTRKvolumeAtECAL( TTree*, edm::Service<TFileService>& );
     void branchesJetInfoAtECALstitched   ( TTree*, edm::Service<TFileService>& );
+    void branchesPFEB             ( TTree*, edm::Service<TFileService>& );
+    void branchesPFHBHE           ( TTree*, edm::Service<TFileService>& );
 
     bool runEvtSel          ( const edm::Event&, const edm::EventSetup& );
     bool runEvtSel_jet      ( const edm::Event&, const edm::EventSetup& );
     void fillEB             ( const edm::Event&, const edm::EventSetup& );
     void fillEE             ( const edm::Event&, const edm::EventSetup& );
+    void fillES             ( const edm::Event&, const edm::EventSetup& );
+    //void fillESatEE         ( const edm::Event&, const edm::EventSetup& );
     void fillHBHE           ( const edm::Event&, const edm::EventSetup& );
     void fillECALatHCAL     ( const edm::Event&, const edm::EventSetup& );
     void fillECALstitched   ( const edm::Event&, const edm::EventSetup& );
@@ -180,13 +192,16 @@ class RecHitAnalyzer : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
     void fillTRKvolumeAtEBEE( const edm::Event&, const edm::EventSetup& );
     //void fillTRKvolumeAtECAL( const edm::Event&, const edm::EventSetup& );
     void fillJetInfoAtECALstitched   ( const edm::Event&, const edm::EventSetup& );
+    void fillPFEB             ( const edm::Event&, const edm::EventSetup& );
+    void fillPFHBHE           ( const edm::Event&, const edm::EventSetup& );
     void TrackMatching ( const edm::Event& iEvent, const edm::EventSetup& iSetup );
 
     const reco::PFCandidate* getPFCand(edm::Handle<PFCollection> pfCands, float eta, float phi, float& minDr, bool debug = false);
     const reco::Track* getTrackCand(edm::Handle<reco::TrackCollection> trackCands, float eta, float phi, float& minDr, bool debug = false);
     int   getTruthLabel(const reco::PFJetRef& recJet, edm::Handle<reco::GenParticleCollection> genParticles, float dRMatch = 0.4, bool debug = false);
-    std::pair<int, reco::GenTau*>  getTruthLabelForTauJets(const reco::PFJetRef& recJet, edm::Handle<reco::GenParticleCollection> genParticles,  double magneticField, float dRMatch = 0.4, bool debug = false);
+    std::pair<int, reco::GenTau*>  getTruthLabelForTauJets(const reco::PFJetRef& recJet, edm::Handle<reco::GenParticleCollection> genParticles, edm::Handle<reco::GenJetCollection> genJets, double magneticField, float dRMatch = 0.4, bool debug = false);
     float getBTaggingValue(const reco::PFJetRef& recJet, edm::Handle<edm::View<reco::Jet> >& recoJetCollection, edm::Handle<reco::JetTagCollection>& btagCollection, float dRMatch = 0.1, bool debug= false );
+    math::XYZVector GetPi0Direction(math::XYZPoint vertex, double releta, double relphi, double seedeta, double seedphi);
 
     // Jet level functions
     std::string mode_;  // EventLevel / JetLevel
@@ -206,6 +221,7 @@ class RecHitAnalyzer : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
     void fillEvtSel_jet_dijet_gg_qq( const edm::Event&, const edm::EventSetup& );
     void fillEvtSel_jet_taujet      ( const edm::Event&, const edm::EventSetup& );
 
+
     int nTotal, nPassed;
 
 }; // class RecHitAnalyzer
@@ -217,6 +233,7 @@ class RecHitAnalyzer : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
 static const bool debug = false;
 
 static const int nEE = 2;
+static const int nES = 2;
 static const int nTOB = 6;
 static const int nTEC = 9;
 static const int nTIB = 4;
@@ -242,6 +259,12 @@ static const int HBHE_IPHI_NUM = hcaldqm::constants::IPHI_NUM;//72;
 static const int HBHE_IPHI_MIN = hcaldqm::constants::IPHI_MIN;//1;
 static const int HBHE_IPHI_MAX = hcaldqm::constants::IPHI_MAX;//72;
 static const int ECAL_IETA_MAX_EXT = 140;
+
+static const int ES_MIN_IX = ESDetId::IX_MIN;
+static const int ES_MIN_IY = ESDetId::IY_MIN;
+static const int ES_MAX_IX = ESDetId::IX_MAX;
+static const int ES_MAX_IY = ESDetId::IY_MAX;
+static const int ES_NC_PER_ZSIDE = ESDetId::IX_MAX*ESDetId::IY_MAX;
 
 static const float zs = 0.;
 
@@ -277,5 +300,17 @@ static const double eta_bins_HBHE[2*(hcaldqm::constants::IETA_MAX_HE-1)+1] =
 //
 // static data member definitions
 //
+
+template<class T>
+math::XYZVector ExtrapolateToECAL(T part, double magneticField) {
+  BaseParticlePropagator propagator = BaseParticlePropagator(
+  RawParticle(part->p4(), math::XYZTLorentzVector(part->vx(), part->vy(), part->vz(), 0.),
+              part->charge()),0.,0.,magneticField);
+
+  propagator.propagateToEcalEntrance(false); // propogate to ECAL entrance
+  math::XYZVector position = propagator.particle().vertex().Vect();
+  return position;
+}
+
 
 #endif
